@@ -25,17 +25,38 @@ function blank() {
     records: { phonation: 0, twister: 0, bestScore: 0, longestTalk: 0, wpmAccuracy: 0 },
     badges: [],
     seen: { onboarded: false },
-    settings: { haptics: true, sound: true, theme: 'dark', tips: true, autoStop: true },
+    settings: {
+      haptics: true, sound: true, theme: 'auto', tips: true, autoStop: true,
+      softMode: true,        // masque les notes chiffrées
+      keepTakes: false,      // garder automatiquement les prises (sinon elles s'effacent)
+      joker: true,           // 1 jour manqué toléré par semaine
+      media: 'audio',        // mode du défi : audio | video
+    },
+    reminder: { enabled: false, time: '08:30', anchor: 'Mon café' },
+    /* habitude : nombre de « reps » (défis, replays, mini-exos) par jour local */
+    days: {},
+    totalReps: 0,
   };
 }
 
 function migrate(s) {
   const b = blank();
   const out = { ...b, ...s };
-  for (const k of ['profile', 'skills', 'counts', 'streak', 'program', 'records', 'settings', 'seen'])
+  for (const k of ['profile', 'skills', 'counts', 'streak', 'program', 'records', 'settings', 'seen', 'reminder'])
     out[k] = { ...b[k], ...(s[k] || {}) };
   out.sessions = Array.isArray(s.sessions) ? s.sessions : [];
   out.badges = Array.isArray(s.badges) ? s.badges : [];
+  // v1 → v2 : thème sombre forcé → suit désormais le système
+  if (!s.days) {
+    if (out.settings.theme === 'dark') out.settings.theme = 'auto';
+    // reconstitue l'historique d'habitude à partir des séances de la v1
+    out.days = {};
+    for (const x of out.sessions) {
+      const k = todayKey(new Date(x.date));
+      out.days[k] = { reps: (out.days[k]?.reps || 0) + 1, defis: 0, secs: (out.days[k]?.secs || 0) + (x.duration || 0) };
+    }
+    out.totalReps = out.sessions.length;
+  }
   return out;
 }
 
@@ -52,8 +73,11 @@ function persist() {
   try { localStorage.setItem(KEY, JSON.stringify(state)); }
   catch (e) { console.warn('Sauvegarde impossible', e); }
 }
+let version = 0;
 export function subscribe(fn) { subs.add(fn); return () => subs.delete(fn); }
-function emit() { persist(); subs.forEach(f => f(state)); }
+/** compteur de version : permet à React de détecter les mutations en place */
+export const getVersion = () => version;
+function emit() { version++; persist(); subs.forEach(f => f(state)); }
 
 export const get = () => state;
 
@@ -77,24 +101,75 @@ export function title(lvl = levelInfo().level) {
   return t;
 }
 
-/* ------------------------------ Séries ------------------------------ */
+/* ------------------------------ Séries ------------------------------
+   Règle d'or : « jamais 2 jours manqués ». Avec le joker activé, UN jour manqué isolé
+   est toléré par fenêtre de 7 jours. Deux jours manqués d'affilée cassent la chaîne.
+   La série compte des jours actifs (pas des jours calendaires).                     */
+export { todayKey, dayDiff };
+const keyMinus = (k, n) => { const d = new Date(k + 'T12:00'); d.setDate(d.getDate() - n); return todayKey(d); };
+export const isActive = k => (state.days[k]?.reps || 0) > 0;
+
+export function computeStreak(joker = state.settings.joker) {
+  const t = todayKey();
+  let current = 0, lastJoker = null;
+  const jokerDays = [];
+  for (let i = 0; i < 4000; i++) {
+    const k = keyMinus(t, i);
+    if (isActive(k)) { current++; continue; }
+    if (i === 0) continue;                       // aujourd'hui n'est pas fini
+    if (joker && isActive(keyMinus(t, i + 1)) && (lastJoker === null || i - lastJoker >= 7)) {
+      lastJoker = i; jokerDays.push(k); continue;
+    }
+    break;
+  }
+  const activeToday = isActive(t);
+  const yesterdayMissed = !isActive(keyMinus(t, 1));
+  const jokerAvailable = joker && !jokerDays.some(k => dayDiff(k, t) < 7);
+  return {
+    current, activeToday, jokerDays, jokerAvailable,
+    // un deuxième jour manqué casserait la chaîne : on le signale (sans culpabiliser)
+    atRisk: !activeToday && yesterdayMissed && current > 0,
+    best: Math.max(state.streak.best || 0, current),
+  };
+}
 function bumpStreak() {
-  const t = todayKey(), st = state.streak;
-  if (st.lastDay === t) return;
-  st.current = st.lastDay && dayDiff(st.lastDay, t) === 1 ? st.current + 1 : 1;
-  st.lastDay = t;
-  st.best = Math.max(st.best, st.current);
+  const st = computeStreak();
+  state.streak.current = st.current;
+  state.streak.best = st.best;
+  state.streak.lastDay = todayKey();
 }
 export function streakStatus() {
-  const st = state.streak, t = todayKey();
-  if (!st.lastDay) return { ...st, current: 0, activeToday: false };
-  const gap = dayDiff(st.lastDay, t);
-  return { ...st, current: gap <= 1 ? st.current : 0, activeToday: gap === 0 };
+  const st = computeStreak();
+  return { ...state.streak, current: st.current, best: st.best, activeToday: st.activeToday };
 }
+/** Nombre total de jours actifs : c'est l'horloge du cycle de 66 jours. */
+export const activeDays = () => Object.values(state.days).filter(d => d.reps > 0).length;
+
+/** Une « rep » = un effort fourni (défi, replay, mini-exo). Aucune note. */
+export function recordRep({ kind = 'rep', secs = 0, defi = false, title = '' } = {}) {
+  const t = todayKey();
+  const d = state.days[t] || { reps: 0, defis: 0, secs: 0 };
+  d.reps++; d.secs += secs; if (defi) d.defis++;
+  state.days[t] = d;
+  state.totalReps = (state.totalReps || 0) + 1;
+  const gained = defi ? 25 : 8;
+  state.xp += gained;
+  if (defi) {
+    state.sessions.unshift({ id: `s${Date.now().toString(36)}`, date: Date.now(), kind, title: title || 'Défi', score: null, effort: true, duration: secs });
+    if (state.sessions.length > MAX_SESSIONS) state.sessions.length = MAX_SESSIONS;
+    if (kind === 'defi') state.records.longestTalk = Math.max(state.records.longestTalk || 0, Math.round(secs));
+  }
+  bumpStreak();
+  const newBadges = refreshBadges();
+  emit();
+  return { gained, newBadges, repsToday: d.reps };
+}
+export function setReminder(patch) { state.reminder = { ...state.reminder, ...patch }; emit(); }
+
 /** 7 derniers jours (lun→dim glissant), pour la frise d'accueil */
 export function last7Days() {
   const days = [];
-  const done = new Set(state.sessions.map(s => todayKey(new Date(s.date))));
+  const done = new Set(Object.keys(state.days).filter(isActive));
   for (let i = 6; i >= 0; i--) {
     const d = new Date(); d.setDate(d.getDate() - i);
     const k = todayKey(d);
@@ -142,6 +217,10 @@ export function recordSession({ exerciseId, kind, title: label, score, skills, m
   if (kind === 'impro') r.longestTalk = Math.max(r.longestTalk || 0, Math.round(duration));
   if (metrics.accuracy) r.wpmAccuracy = Math.max(r.wpmAccuracy || 0, Math.round(metrics.accuracy));
 
+  const tk = todayKey();
+  const dd = state.days[tk] || { reps: 0, defis: 0, secs: 0 };
+  dd.reps++; dd.secs += duration || 0; state.days[tk] = dd;
+  state.totalReps = (state.totalReps || 0) + 1;
   bumpStreak();
   const newBadges = refreshBadges();
   const afterLevel = levelInfo().level;
@@ -189,7 +268,7 @@ export function weakest() {
   return { key: e[0], value: e[1], ...SKILLS[e[0]] };
 }
 export function scoreHistory(kind = null, n = 20) {
-  return state.sessions.filter(s => !kind || s.kind === kind).slice(0, n).reverse().map(s => s.score);
+  return state.sessions.filter(s => s.score != null && (!kind || s.kind === kind)).slice(0, n).reverse().map(s => s.score);
 }
 /** Évolution réelle de la compétence : valeur enregistrée après chacune des n dernières séances. */
 export function skillTrend(key, n = 12) {
@@ -200,10 +279,11 @@ export function skillTrend(key, n = 12) {
   return pts.length ? pts : [state.skills[key]];
 }
 export function stats() {
-  const s = state.sessions;
-  const total = s.reduce((a, x) => a + (x.duration || 0), 0);
+  const all = state.sessions;
+  const total = all.reduce((a, x) => a + (x.duration || 0), 0);
+  const s = all.filter(x => x.score != null);
   return {
-    count: s.length,
+    count: all.length,
     minutes: Math.round(total / 60),
     avg: s.length ? Math.round(s.reduce((a, x) => a + x.score, 0) / s.length) : 0,
     avg10: s.length ? Math.round(s.slice(0, 10).reduce((a, x) => a + x.score, 0) / Math.min(10, s.length)) : 0,
@@ -211,7 +291,7 @@ export function stats() {
 }
 
 /* ------------------------------ Réglages / maintenance ------------------------------ */
-export function setSetting(k, v) { state.settings[k] = v; emit(); }
+export function setSetting(k, v) { state.settings[k] = v; if (k === 'joker') bumpStreak(); emit(); }
 export function setProfile(k, v) { state.profile[k] = v; emit(); }
 export function markSeen(k) { state.seen[k] = true; emit(); }
 export function exportJSON() { return JSON.stringify(state, null, 2); }

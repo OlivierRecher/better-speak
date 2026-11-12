@@ -889,6 +889,10 @@ function vizRing(S, progress = 0) {
    ========================================================================== */
 export function isOpen() { return !!S; }
 
+/**
+ * @param {string[]} ids
+ * @param {{ programSession?: string | null, label?: string }} [opts]
+ */
 export function runSequence(ids, { programSession = null, label = '' } = {}) {
   return new Promise(resolve => {
     const list = ids.map(byId).filter(Boolean);
@@ -1124,29 +1128,53 @@ function renderResult() {
     exerciseId: S.ex.id, kind: S.ex.kind, title: S.ex.title,
     score: res.score, skills: res.skills || S.ex.skills, metrics: res.metrics || {}, duration: dur,
   });
-  sfx(res.score >= 80 ? 'win' : 'ok'); vibrate(res.score >= 80 ? 60 : 25);
+  sfx('win'); vibrate(40);
 
   const url = S.blob ? URL.createObjectURL(S.blob) : null;
   const q = S.opts.queue;
   const nextLabel = q && q.i + 1 < q.n ? "Exercice suivant" : "Terminer";
 
-  stage().innerHTML = `${head('résultat')}
-    <div class="stage-body"><div class="stack g16">
+  const soft = store.get().settings.softMode;
+  const SK = { articulation: 'Articulation', debit: 'Débit', prosodie: 'Prosodie', fluidite: 'Fluidité', projection: 'Projection' };
+  // une première mesure part de zéro : ce n'est pas un progrès, on ne l'affiche pas comme tel
+  const ups = Object.entries(saved.deltas).filter(([k, v]) => v >= .4 && store.get().counts[k] > 1).sort((a, b) => b[1] - a[1]);
+  const good = tips.find(t => t.kind === 'good');
+  const work = tips.find(t => t.kind === 'work' && !t.text.startsWith('**Analyse partielle**'));
+  const fullDetail = `${res.cards?.length ? `<div class="metrics">${res.cards.join('')}</div>` : ''}
+      ${tips.length ? `<div class="stack g8">${tips.map(t =>
+        `<div class="tip ${t.kind}"><span class="ic">${icon(t.kind === 'good' ? 'check' : 'bulb')}</span><span>${md(t.text)}</span></div>`).join('')}</div>` : ''}
+      ${res.detail || ''}`;
+
+  /* Mode doux : on n'affiche ni note ni verdict. Une victoire (comparée à soi-même) + une seule piste.
+     Les mesures restent consultables, repliées. */
+  const softBody = `
+      <div class="soft-hero"><div class="soft-t">C'est fait.</div>
+        <div class="soft-s">${esc(S.ex.title)} · on se compare uniquement à toi-même</div>
+        <div class="row" style="justify-content:center;margin-top:12px;gap:8px;flex-wrap:wrap">
+          <span class="xp-pop">+${saved.gained} XP</span>
+          ${saved.levelUp ? `<span class="xp-pop">${icon('trophy')} Niveau ${saved.levelUp}</span>` : ''}</div></div>
+      <div class="soft-card win"><div class="soft-k">Ce qui progresse</div>
+        ${ups.length ? `<div class="soft-v">${SK[ups[0][0]]} +${ups[0][1].toFixed(1)}</div><div class="soft-d">par rapport à ta moyenne récente</div>`
+          : good ? `<div class="soft-d lg">${md(good.text)}</div>` : `<div class="soft-v">Tu es venu·e.</div><div class="soft-d">La régularité est le premier moteur du progrès.</div>`}</div>
+      ${work ? `<div class="soft-card focus"><div class="soft-k">Une seule piste pour la prochaine fois</div><div class="soft-d lg">${md(work.text)}</div></div>` : ''}
+      <details class="soft-more"><summary>Voir les mesures détaillées</summary><div class="stack g16" style="margin-top:12px">
+        <div class="small muted">Note technique : ${Math.round(res.score)}/100${res.partial ? ' (analyse partielle)' : ''}</div>${fullDetail}</div></details>`;
+
+  const hardBody = `
       <div class="result-hero">
         <div class="score">${Math.round(res.score)}</div>
         <div class="lbl">${A.gradeLabel(res.score)} · ${esc(S.ex.title)}${res.partial ? ' · analyse partielle' : ''}</div>
         <div class="row" style="justify-content:center;margin-top:12px;gap:8px;flex-wrap:wrap">
           <span class="xp-pop">+${saved.gained} XP</span>
           ${saved.levelUp ? `<span class="xp-pop">${icon('trophy')} Niveau ${saved.levelUp}</span>` : ''}
-          ${Object.entries(saved.deltas).filter(([, v]) => v >= .4).map(([k, v]) =>
-            `<span class="chip ok">${{ articulation: 'Articulation', debit: 'Débit', prosodie: 'Prosodie', fluidite: 'Fluidité', projection: 'Projection' }[k]} +${v.toFixed(1)}</span>`).join('')}
+          ${ups.map(([k, v]) => `<span class="chip ok">${SK[k]} +${v.toFixed(1)}</span>`).join('')}
         </div>
-      </div>
-      ${res.cards?.length ? `<div class="metrics">${res.cards.join('')}</div>` : ''}
-      ${tips.length ? `<div class="stack g8">${tips.map(t =>
-        `<div class="tip ${t.kind}"><span class="ic">${icon(t.kind === 'good' ? 'check' : 'bulb')}</span><span>${md(t.text)}</span></div>`).join('')}</div>` : ''}
-      ${res.detail || ''}
-      ${url ? `<div class="card stack g8"><div class="tiny dim">Réécoute ta prise — c'est l'exercice le plus efficace de tous</div>
+      </div>${fullDetail}`;
+
+  stage().innerHTML = `${head('terminé')}
+    <div class="stage-body"><div class="stack g16">
+      ${soft ? softBody : hardBody}
+      ${url ? `<div class="card stack g8"><div class="tiny dim">Réécoute ta prise · elle s'efface quand tu quittes cet écran</div>
         <audio controls src="${url}" style="width:100%"></audio></div>` : ''}
       ${saved.newBadges.length ? `<div class="card stack g8"><div class="tiny dim">Nouveau${saved.newBadges.length > 1 ? 'x' : ''} badge${saved.newBadges.length > 1 ? 's' : ''}</div>
         <div class="row wrap">${saved.newBadges.map(b => `<span class="chip on">${b.e} ${esc(b.n)}</span>`).join('')}</div></div>` : ''}

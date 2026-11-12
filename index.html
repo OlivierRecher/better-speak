@@ -3,25 +3,24 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#0a0e17">
-<meta name="description" content="Coach d'élocution, de diction et de prise de parole. 100% dans le navigateur.">
-<title>Clair — coach d'élocution</title>
-<link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="assets/icon.svg">
+<meta name="theme-color" content="#0B0D12" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#F6F4F0" media="(prefers-color-scheme: light)">
+<meta name="description" content="Un défi d'une minute par jour pour parler avec aisance. Zéro jugement, progrès durable.">
+<title>Clair</title>
+<link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.webmanifest">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Clair">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
-<div class="app">
-  <header class="topbar" id="topbar"></header>
-  <main class="view" id="view" tabindex="-1"></main>
-  <nav class="tabbar" id="tabbar" aria-label="Navigation principale"></nav>
-</div>
+<div id="root"></div>
+<!-- Moteur d'exercices de l'Atelier (rendu impératif, hérité de la v1) -->
 <div class="stage" id="stage" hidden style="display:none"></div>
 <div class="toasts" id="toasts" aria-live="polite"></div>
-<noscript><p style="padding:2rem;color:#fff">Cet outil nécessite JavaScript.</p></noscript>
-<script type="module" src="js/app.js"></script>
+<noscript><p style="padding:2rem">Clair nécessite JavaScript.</p></noscript>
+<script type="module" src="/src/main.tsx"></script>
 </body>
 </html>

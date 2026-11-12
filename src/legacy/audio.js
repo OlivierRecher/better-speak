@@ -66,6 +66,8 @@ export class Mic {
     this.silenceDb = opts.silenceDb ?? 0.035;   // seuil RMS de parole
     this.minPause = opts.minPause ?? 260;       // ms — en dessous, ce n'est pas une pause
     this.onFrame = opts.onFrame || (() => {});
+    this.video = !!opts.video;                  // capture caméra + micro (défi vidéo)
+    this.record = opts.record ?? true;
     this.reset();
   }
   reset() {
@@ -78,11 +80,12 @@ export class Mic {
     if (!support.mic) throw new Error("Micro non disponible sur ce navigateur.");
     this.stream = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false },
+      video: this.video ? { facingMode: 'user', width: { ideal: 720 }, height: { ideal: 1280 } } : false,
     });
     const AC = window.AudioContext || window.webkitAudioContext;
     this.ctx = new AC();
     if (this.ctx.state === 'suspended') await this.ctx.resume();
-    this.src = this.ctx.createMediaStreamSource(this.stream);
+    this.src = this.ctx.createMediaStreamSource(new MediaStream(this.stream.getAudioTracks()));
     this.analyser = this.ctx.createAnalyser();
     this.analyser.fftSize = 2048;
     this.analyser.smoothingTimeConstant = 0.55;
@@ -94,12 +97,15 @@ export class Mic {
     this._segStart = this.t0;
     this.running = true;
     this._loop();
-    if (support.rec) this._startRecorder();
+    if (support.rec && this.record) this._startRecorder();
     return this;
   }
   _startRecorder() {
     try {
-      const mime = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'].find(m => MediaRecorder.isTypeSupported(m));
+      const types = this.video
+        ? ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4']
+        : ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'];
+      const mime = types.find(m => MediaRecorder.isTypeSupported(m));
       this.chunks = [];
       this.recorder = new MediaRecorder(this.stream, mime ? { mimeType: mime } : undefined);
       this.recorder.ondataavailable = e => e.data.size && this.chunks.push(e.data);
