@@ -1,0 +1,67 @@
+/* ==========================================================================
+   Jetons de design — reprennent la maquette Figma « Refonte v2 ».
+   Le thème est résolu en JS (auto → système) et posé sur <html data-theme>.
+   ========================================================================== */
+:root,
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --c-bg: #0b0d12;
+  --c-s1: #14171f;
+  --c-s2: #1c202b;
+  --c-s3: #262b38;
+  --c-line: #2a2f3c;
+  --c-line2: #343a49;
+  --c-t1: #f3f4f7;
+  --c-t2: #a3a9b8;
+  --c-t3: #737a8c;
+  --c-acc: #8b7cff;
+  --c-acc2: #b3a8ff;
+  --c-gold: #ffc857;
+  --c-gold-ink: #ffc857;
+  --c-ember: #ff8a4c;
+  --c-green: #5ee6a0;
+  --c-teal: #4fd1c5;
+  --c-rose: #ff7a90;
+  --c-hero-a: #2a2260;
+  --c-hero-b: #141826;
+  --c-glass: rgba(255, 255, 255, 0.08);
+  --c-shadow: 0 18px 40px -18px rgba(0, 0, 0, 0.85);
+  --c-card-shadow: none;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --c-bg: #f6f4f0;
+  --c-s1: #ffffff;
+  --c-s2: #f0eee9;
+  --c-s3: #e6e3dc;
+  --c-line: #e8e5df;
+  --c-line2: #dad6ce;
+  --c-t1: #16181d;
+  --c-t2: #5a606e;
+  --c-t3: #767b87;
+  --c-acc: #6b5be6;
+  --c-acc2: #5646cf;
+  --c-gold: #e8a317;
+  --c-gold-ink: #a86f00;
+  --c-ember: #ee6e30;
+  --c-green: #1fae6b;
+  --c-teal: #119c90;
+  --c-rose: #ee4f6c;
+  --c-hero-a: #ece8ff;
+  --c-hero-b: #ffffff;
+  --c-glass: rgba(107, 91, 230, 0.1);
+  --c-shadow: 0 14px 34px -20px rgba(22, 24, 29, 0.3);
+  --c-card-shadow: 0 4px 18px rgba(26, 20, 13, 0.06);
+}
+
+:root {
+  --font: 'Inter Variable', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
+  --r-chip: 999px;
+  --r-card: 22px;
+  --r-hero: 28px;
+  --gutter: 16px;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --tabbar-h: calc(64px + env(safe-area-inset-bottom));
+}
