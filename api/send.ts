@@ -1,7 +1,7 @@
 /* POST /api/send — appelé toutes les 5 minutes par Upstash QStash (planification).
    Envoie le rappel à chaque abonné dont l'heure locale vient d'arriver,
    sauf s'il a déjà pratiqué aujourd'hui ou déjà reçu son rappel. */
-import webpush from 'web-push';
+import { setVapidDetails, sendNotification } from 'web-push';
 import { Receiver } from '@upstash/qstash';
 import { redis, SUBS_KEY, json, localNow, type StoredSub } from './_lib.js';
 import { pickMessage, REMINDER_TITLE } from '../src/lib/messages.js';
@@ -33,7 +33,7 @@ export async function POST(req: Request) {
   const pub = process.env.VAPID_PUBLIC_KEY ?? process.env.VITE_VAPID_PUBLIC_KEY;
   const priv = process.env.VAPID_PRIVATE_KEY;
   if (!pub || !priv) return json({ error: 'clés VAPID manquantes' }, 500);
-  webpush.setVapidDetails(process.env.VAPID_SUBJECT ?? 'mailto:contact@example.com', pub, priv);
+  setVapidDetails(process.env.VAPID_SUBJECT ?? 'mailto:contact@example.com', pub, priv);
 
   const all = (await redis.hgetall<Record<string, StoredSub>>(SUBS_KEY)) ?? {};
   let sent = 0, removed = 0, skipped = 0;
@@ -47,7 +47,7 @@ export async function POST(req: Request) {
 
     const payload = JSON.stringify({ title: REMINDER_TITLE, body: pickMessage({ streak: s.streak, anchor: s.anchor }), url: '/?src=rappel', tag: 'clair-daily' });
     try {
-      await webpush.sendNotification(s.subscription, payload, { TTL: 3 * 3600, urgency: 'normal' });
+      await sendNotification(s.subscription, payload, { TTL: 3 * 3600, urgency: 'normal' });
       await redis.hset(SUBS_KEY, { [id]: { ...s, lastSent: day } });
       sent++;
     } catch (e) {
