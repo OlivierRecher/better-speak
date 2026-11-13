@@ -45,17 +45,24 @@ export async function POST(req: Request) {
     const due = minutes >= target && minutes < target + WINDOW_MIN;
     if (!due || s.lastSent === day || s.lastActive === day) { skipped++; return; }
 
+    /* Verrou atomique « un rappel par appareil et par jour » : protège des appels
+       simultanés (plusieurs planifications, nouvelles tentatives de QStash). */
+    const lockKey = `clair:sent:${id}:${day}`;
+    const lock = await redis.set(lockKey, 1, { nx: true, ex: 2 * 86400 });
+    if (lock !== 'OK') { skipped++; return; }
+
     const payload = JSON.stringify({ title: REMINDER_TITLE, body: pickMessage({ streak: s.streak, anchor: s.anchor }), url: '/?src=rappel', tag: 'clair-daily' });
     try {
       await sendNotification(s.subscription, payload, { TTL: 3 * 3600, urgency: 'normal' });
-      await redis.hset(SUBS_KEY, { [id]: { ...s, lastSent: day } });
       sent++;
     } catch (e) {
       const code = (e as { statusCode?: number }).statusCode;
       // abonnement expiré ou révoqué : on nettoie
       if (code === 404 || code === 410) { await redis.hdel(SUBS_KEY, id); removed++; }
-      else console.error('envoi push échoué', code);
+      else { console.error('envoi push échoué', code); await redis.del(lockKey); } // nouvel essai au prochain passage
+      return;
     }
+    await redis.hset(SUBS_KEY, { [id]: { ...s, lastSent: day } }).catch(err => console.error('mise à jour lastSent', err));
   }));
 
   return json({ ok: true, sent, removed, skipped, total: Object.keys(all).length });

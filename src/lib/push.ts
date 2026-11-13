@@ -33,6 +33,18 @@ function urlB64ToUint8Array(base64: string) {
 
 const tz = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
 
+/** Identifiant stable de l'appareil : un seul rappel par appareil côté serveur. */
+function deviceId(): string {
+  const K = 'clair.device';
+  try {
+    let id = localStorage.getItem(K);
+    if (!id) { id = crypto.randomUUID(); localStorage.setItem(K, id); }
+    return id;
+  } catch {
+    return '';
+  }
+}
+
 async function currentSub() {
   const reg = await navigator.serviceWorker.ready;
   return reg.pushManager.getSubscription();
@@ -43,6 +55,7 @@ function payload(sub: PushSubscription) {
   const st = streak();
   return {
     subscription: sub.toJSON(),
+    device: deviceId(),
     time: s.reminder.time,
     anchor: s.reminder.anchor,
     tz: tz(),
@@ -76,7 +89,7 @@ export async function syncReminder(): Promise<void> {
 export async function disableReminder(): Promise<void> {
   const sub = await currentSub();
   if (!sub) return;
-  await post('/api/unsubscribe', { endpoint: sub.endpoint }).catch(() => {});
+  await post('/api/unsubscribe', { endpoint: sub.endpoint, device: deviceId() }).catch(() => {});
   await sub.unsubscribe();
 }
 
@@ -85,7 +98,7 @@ export async function markActiveRemote(): Promise<void> {
   try {
     if (!getState().reminder.enabled || !('serviceWorker' in navigator)) return;
     const sub = await currentSub();
-    if (sub) await post('/api/active', { endpoint: sub.endpoint, day: todayKey(), streak: streak().current });
+    if (sub) await post('/api/active', { endpoint: sub.endpoint, device: deviceId(), day: todayKey(), streak: streak().current });
   } catch {
     /* hors ligne : le rappel partira peut-être, ce n'est pas grave */
   }

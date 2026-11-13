@@ -7,6 +7,7 @@ import { Loop } from './flow/Loop';
 import { useClair } from './lib/state';
 import { pickTopic } from './lib/topics';
 import { applyTheme, iconHtml, tap } from './lib/ui';
+import { syncReminder } from './lib/push';
 
 type Tab = 'today' | 'atelier' | 'progress' | 'me';
 const TABS: { k: Tab; label: string; icon: string }[] = [
@@ -39,6 +40,12 @@ export function App() {
     const on = () => setTab(fromHash());
     window.addEventListener('hashchange', on);
     return () => window.removeEventListener('hashchange', on);
+  }, []);
+
+  // rappel actif : on resynchronise fuseau, série et identifiant d'appareil au démarrage
+  useEffect(() => {
+    if (s.reminder.enabled) syncReminder().catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ouverture depuis la notification : on propose directement le défi

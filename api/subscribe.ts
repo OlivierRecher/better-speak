@@ -1,7 +1,8 @@
 /* POST /api/subscribe — enregistre ou met à jour l'abonnement push et l'heure du rappel. */
-import { redis, SUBS_KEY, idOf, json, readJson, isTime, isTz, isEndpoint, isDay, type StoredSub } from './_lib.js';
+import { redis, SUBS_KEY, idOf, subId, json, readJson, isTime, isTz, isEndpoint, isDay, type StoredSub } from './_lib.js';
 
 interface Body {
+  device?: string;
   subscription?: StoredSub['subscription'];
   time?: string;
   tz?: string;
@@ -17,7 +18,7 @@ export async function POST(req: Request) {
     return json({ error: 'abonnement invalide' }, 400);
   if (!isTime(b.time) || !isTz(b.tz)) return json({ error: 'heure ou fuseau invalide' }, 400);
 
-  const id = idOf(sub.endpoint);
+  const id = subId(b.device, sub.endpoint);
   const prev = await redis.hget<StoredSub>(SUBS_KEY, id);
   const rec: StoredSub = {
     subscription: { endpoint: sub.endpoint, keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth } },
@@ -29,5 +30,7 @@ export async function POST(req: Request) {
     lastSent: prev?.lastSent ?? null,
   };
   await redis.hset(SUBS_KEY, { [id]: rec });
+  // migration : ancien enregistrement indexé par l'endpoint
+  if (id !== idOf(sub.endpoint)) await redis.hdel(SUBS_KEY, idOf(sub.endpoint));
   return json({ ok: true });
 }

@@ -22,6 +22,11 @@ export const redis = new Redis({
 
 export const idOf = (endpoint: string) => createHash('sha256').update(endpoint).digest('hex').slice(0, 32);
 
+/** Identifiant d'abonné : l'identifiant d'appareil s'il est fourni (un seul rappel par
+    appareil, même si le navigateur renouvelle son abonnement), sinon le hash de l'endpoint. */
+export const subId = (device: unknown, endpoint: string) =>
+  typeof device === 'string' && /^[a-z0-9-]{8,64}$/i.test(device) ? `d:${device}` : idOf(endpoint);
+
 export const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json' } });
 
