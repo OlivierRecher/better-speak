@@ -31,7 +31,7 @@ export async function POST(req: Request) {
   const refused = await authorize(req, body);
   if (refused) {
     console.error('[rappels] appel refusé :', refused);
-    await redis.set(AUTH_FAIL_KEY, { at: new Date().toISOString(), reason: refused }).catch(() => {});
+    await redis.set(AUTH_FAIL_KEY, { at: new Date().toISOString(), reason: refused }, { nx: true, ex: 60 }).catch(() => {});
     return json({ error: 'non autorisé' }, 401);
   }
 

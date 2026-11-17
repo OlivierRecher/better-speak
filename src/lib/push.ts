@@ -85,8 +85,17 @@ async function ensureSub(fresh = false): Promise<PushSubscription> {
   return sub ?? reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8Array(VAPID!) });
 }
 
-/** Enregistre l'abonnement et l'heure côté serveur (un seul enregistrement par appareil). */
-async function register(): Promise<void> {
+/** Enregistre l'abonnement et l'heure côté serveur (un seul enregistrement par appareil).
+    Un seul enregistrement à la fois : deux appels proches (démarrage + changement d'heure)
+    ne créent pas deux abonnements push ; le second repart une fois le premier fini. */
+let inflight: Promise<void> | null = null;
+function register(): Promise<void> {
+  const run = (inflight ?? Promise.resolve()).then(registerNow);
+  const tail: Promise<void> = run.catch(() => {}).finally(() => { if (inflight === tail) inflight = null; });
+  inflight = tail;
+  return run;
+}
+async function registerNow(): Promise<void> {
   let r = await post('/api/subscribe', payload(await ensureSub()));
   // 410 : le service push a révoqué cet abonnement (iOS le fait parfois) → on en recrée un
   if (r.status === 410) r = await post('/api/subscribe', payload(await ensureSub(true)));

@@ -173,3 +173,20 @@ test('abonnement révoqué (410) → retiré et marqué expiré pour que l’app
   assert.ok(w.dead.has(epKey('https://web.push.apple.com/dead')));
   assert.equal(r.results.find(x => x.id === 'd:broken-001')?.verdict, 'invalide');
 });
+
+test('rappel activé (ou heure changée) après l\u2019heure choisie → rien tout de suite, premier rappel le lendemain', async () => {
+  const w = fakeWorld();
+  const ep = 'https://web.push.apple.com/I';
+  // activé à 20:30 pour 20:00
+  w.subs['d:phone-iiii'] = sub(ep, { time: '20:00', armedAt: paris('2026-11-17', '20:30').toISOString() });
+  await schedule(w, '2026-11-17', '20:30', '23:55', 2);
+  assert.equal(countFor(w, ep), 0);
+  await schedule(w, '2026-11-18', '19:00', '21:00', 2);
+  assert.equal(countFor(w, ep), 1);
+  assert.equal(w.delivered[0].at.toISOString(), paris('2026-11-18', '20:00').toISOString());
+  // activé à 19:00 pour 20:00 le même jour : il part bien ce jour-là
+  const w2 = fakeWorld();
+  w2.subs['d:phone-jjjj'] = sub(ep, { time: '20:00', armedAt: paris('2026-11-17', '19:00').toISOString() });
+  await schedule(w2, '2026-11-17', '19:00', '21:00');
+  assert.equal(countFor(w2, ep), 1);
+});

@@ -92,7 +92,11 @@ navigateur ne sait pas programmer une notification quand l'app est fermée.
 - Deux verrous Redis (`clair:sent:<appareil>:<jour>` et `clair:sent:e:<endpoint>:<jour>`) rendent
   l'envoi idempotent : appels simultanés, nouveaux essais QStash, doublons d'abonnement, changement
   d'heure ou désactivation/réactivation ne renvoient rien le même jour.
-- Si un passage est manqué, le rappel part au passage suivant, jusqu'à 60 min après l'heure choisie.
+- Si un passage est manqué, le rappel part au passage suivant, jusqu'à 60 min après l'heure choisie
+  (sans franchir minuit). Activer le rappel ou choisir une heure déjà passée ne déclenche rien tout de
+  suite : le premier rappel part le lendemain.
+- Rare : si le service push accepte le message mais que la réponse se perd (délai réseau), un second
+  envoi peut avoir lieu au passage suivant.
 - Abonnement révoqué par le service push (404/410, fréquent sur iPhone) : il est retiré, et l'app en
   recrée un toute seule à sa prochaine ouverture. Si la permission a été retirée, l'interrupteur
   repasse sur « off ».
@@ -108,11 +112,12 @@ et la configuration. En local, `scripts/reminders-diagnose.mjs` lit Redis et QSt
 (`--fix-duplicates` retire les anciens abonnements en double). Pour remettre la production d'aplomb
 une fois (une seule planification, plus de doublons d'abonnement) :
 ```bash
-QSTASH_TOKEN=... UPSTASH_REDIS_REST_URL=... UPSTASH_REDIS_REST_TOKEN=... \
-  ./scripts/reminders-cleanup.sh https://ton-app.vercel.app           # montre ce qui serait fait
-  ./scripts/reminders-cleanup.sh --apply https://ton-app.vercel.app   # le fait
-``` `npm test` simule plusieurs jours
-d'appels à `/api/send`.
+export QSTASH_TOKEN=... UPSTASH_REDIS_REST_URL=... UPSTASH_REDIS_REST_TOKEN=...
+./scripts/reminders-cleanup.sh https://ton-app.vercel.app           # montre ce qui serait fait
+./scripts/reminders-cleanup.sh --apply https://ton-app.vercel.app   # le fait
+```
+
+`npm test` (Node 22.18 ou plus) simule plusieurs jours d'appels à `/api/send`.
 
 Voir `.env.example`. Coût : 0 € sur les offres gratuites de Vercel et Upstash.
 

@@ -31,6 +31,8 @@ export async function POST(req: Request) {
     streak: Number.isFinite(b.streak) ? Math.max(0, Math.min(10000, Number(b.streak))) : 0,
     lastActive: isDay(b.lastActive) ? b.lastActive : prev?.lastActive ?? null,
     lastSent: prev?.lastSent ?? null,
+    // date d'activation / de changement d'heure (pas à chaque resynchronisation)
+    armedAt: prev && prev.time === b.time ? prev.armedAt ?? null : new Date().toISOString(),
   };
   await redis.hset(SUBS_KEY, { [id]: rec });
   // migration : ancien enregistrement indexé par l'endpoint

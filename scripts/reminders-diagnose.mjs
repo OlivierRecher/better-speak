@@ -45,7 +45,7 @@ if (url && token) {
   console.log(`\n== Endpoints expirés (404/410) mémorisés : ${dead.length}`);
 
   const fail = await redis.get('clair:auth-fail');
-  if (fail) console.log(`\n== Dernier appel refusé : ${JSON.stringify(fail)}`);
+  if (fail) console.log(`\n== Appel refusé dans la dernière minute : ${JSON.stringify(fail)}`);
   const runs = (await redis.lrange('clair:runs', 0, 299)) ?? [];
   console.log(`\n== Passages de /api/send journalisés : ${runs.length}${runs[0] ? ` (dernier ${runs[0].at})` : ' (journal ajouté par ce correctif)'}`);
   const slots = new Map();

@@ -82,6 +82,13 @@ export function verdictFor(s: StoredSub, now: Date): { verdict: Verdict; day?: s
   if (s.lastSent === day) return { verdict: 'déjà-envoyé', day };
   if (minutes < target) return { verdict: 'pas-encore', day };
   if (minutes >= target + CATCHUP_MIN) return { verdict: 'trop-tard', day };
+  // rappel activé ou heure changée aujourd'hui APRÈS l'heure choisie : pas d'envoi immédiat
+  if (s.armedAt) {
+    try {
+      const armed = localNow(s.tz, new Date(s.armedAt));
+      if (armed.day === day && armed.minutes > target) return { verdict: 'trop-tard', day };
+    } catch { /* date illisible : on ignore */ }
+  }
   return { verdict: 'à-envoyer', day };
 }
 

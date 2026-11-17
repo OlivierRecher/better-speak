@@ -1,6 +1,6 @@
 /* Outils partagés des fonctions serverless (Vercel). */
 import { Redis } from '@upstash/redis';
-import { createHash } from 'node:crypto';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import type { ReminderStore } from './_reminder.js';
 
 export interface StoredSub {
@@ -11,6 +11,7 @@ export interface StoredSub {
   streak: number;
   lastActive: string | null; // AAAA-MM-JJ local du dernier jour pratiqué
   lastSent: string | null;   // AAAA-MM-JJ local du dernier rappel envoyé
+  armedAt?: string | null;   // ISO : activation ou dernier changement d'heure
 }
 
 export const SUBS_KEY = 'clair:subs';
@@ -70,5 +71,7 @@ export const redisStore: ReminderStore = {
 /** Jeton d'administration (déclenchement manuel, /api/status). */
 export function adminAuthorized(req: Request): boolean {
   const secret = process.env.CRON_SECRET;
-  return !!secret && req.headers.get('authorization') === `Bearer ${secret}`;
+  if (!secret) return false;
+  const a = Buffer.from(req.headers.get('authorization') ?? ''), b = Buffer.from(`Bearer ${secret}`);
+  return a.length === b.length && timingSafeEqual(a, b);
 }

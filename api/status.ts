@@ -59,7 +59,7 @@ export async function GET(req: Request) {
       maxRunsInOneSlot: busiest,
       duplicateSchedulesSuspected: busiest > 1,
       scheduleIds: [...new Set(runs.map(r => r.scheduleId).filter(Boolean))],
-      lastAuthFailure: await redis.get(AUTH_FAIL_KEY),
+      lastAuthFailureLastMinute: await redis.get(AUTH_FAIL_KEY),
     },
     subscribers: subs.length,
     duplicates: dupes.length,
