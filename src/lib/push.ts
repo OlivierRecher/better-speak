@@ -65,8 +65,32 @@ function payload(sub: PushSubscription) {
 }
 
 async function post(path: string, body: unknown) {
-  const r = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
-  if (!r.ok) throw new Error(`${path} → ${r.status}`);
+  return fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+}
+
+/** Vrai si l'abonnement a été créé avec la clé VAPID actuelle (sinon le serveur ne peut plus l'utiliser). */
+function sameKey(sub: PushSubscription) {
+  const k = sub.options?.applicationServerKey;
+  if (!k || !VAPID) return true;
+  const a = new Uint8Array(k), b = urlB64ToUint8Array(VAPID);
+  return a.length === b.length && a.every((x, i) => x === b[i]);
+}
+
+/** Abonnement push utilisable : l'existant, ou un nouveau s'il manque, s'il a été créé
+    avec une autre clé VAPID, ou si le serveur l'a déclaré expiré (`fresh`). */
+async function ensureSub(fresh = false): Promise<PushSubscription> {
+  const reg = await navigator.serviceWorker.ready;
+  let sub = await reg.pushManager.getSubscription();
+  if (sub && (fresh || !sameKey(sub))) { await sub.unsubscribe().catch(() => {}); sub = null; }
+  return sub ?? reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8Array(VAPID!) });
+}
+
+/** Enregistre l'abonnement et l'heure côté serveur (un seul enregistrement par appareil). */
+async function register(): Promise<void> {
+  let r = await post('/api/subscribe', payload(await ensureSub()));
+  // 410 : le service push a révoqué cet abonnement (iOS le fait parfois) → on en recrée un
+  if (r.status === 410) r = await post('/api/subscribe', payload(await ensureSub(true)));
+  if (!r.ok) throw new Error(`/api/subscribe → ${r.status}`);
 }
 
 /** Demande la permission, s'abonne et enregistre l'heure côté serveur. */
@@ -74,16 +98,16 @@ export async function enableReminder(): Promise<void> {
   if (pushStatus() !== 'ready') throw new Error(pushStatus());
   const perm = await Notification.requestPermission();
   if (perm !== 'granted') throw new Error('denied');
-  const reg = await navigator.serviceWorker.ready;
-  const sub = (await reg.pushManager.getSubscription())
-    ?? (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8Array(VAPID!) }));
-  await post('/api/subscribe', payload(sub));
+  await register();
 }
 
-/** Met à jour l'heure ou l'ancre (même abonnement). */
-export async function syncReminder(): Promise<void> {
-  const sub = await currentSub();
-  if (sub) await post('/api/subscribe', payload(sub));
+/** Resynchronise l'abonnement (démarrage, changement d'heure ou d'ancre).
+    Recrée l'abonnement s'il a disparu ; « lost » si la permission a été retirée. */
+export async function syncReminder(): Promise<'ok' | 'lost' | 'skip'> {
+  if (pushStatus() === 'unsupported' || pushStatus() === 'needs-install' || pushStatus() === 'not-configured') return 'skip';
+  if (Notification.permission !== 'granted') return 'lost';
+  await register();
+  return 'ok';
 }
 
 export async function disableReminder(): Promise<void> {

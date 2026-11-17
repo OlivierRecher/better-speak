@@ -4,7 +4,7 @@ import { Atelier } from './screens/Atelier';
 import { Progress } from './screens/Progress';
 import { Me } from './screens/Me';
 import { Loop } from './flow/Loop';
-import { useClair } from './lib/state';
+import { useClair, setReminder } from './lib/state';
 import { pickTopic } from './lib/topics';
 import { applyTheme, iconHtml, tap } from './lib/ui';
 import { syncReminder } from './lib/push';
@@ -42,9 +42,11 @@ export function App() {
     return () => window.removeEventListener('hashchange', on);
   }, []);
 
-  // rappel actif : on resynchronise fuseau, série et identifiant d'appareil au démarrage
+  /* rappel actif : on resynchronise fuseau, série et identifiant d'appareil au démarrage,
+     et on recrée l'abonnement push s'il a été révoqué. Permission retirée : l'interrupteur
+     repasse sur « off » plutôt que d'afficher un rappel qui ne viendra jamais. */
   useEffect(() => {
-    if (s.reminder.enabled) syncReminder().catch(() => {});
+    if (s.reminder.enabled) syncReminder().then(r => { if (r === 'lost') setReminder({ enabled: false }); }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

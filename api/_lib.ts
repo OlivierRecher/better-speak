@@ -1,6 +1,7 @@
 /* Outils partagés des fonctions serverless (Vercel). */
 import { Redis } from '@upstash/redis';
 import { createHash } from 'node:crypto';
+import type { ReminderStore } from './_reminder.js';
 
 export interface StoredSub {
   subscription: { endpoint: string; keys: { p256dh: string; auth: string }; expirationTime?: number | null };
@@ -47,11 +48,27 @@ export function isEndpoint(e: unknown): e is string {
   try { return new URL(e).protocol === 'https:'; } catch { return false; }
 }
 
-/** Date locale (AAAA-MM-JJ) et minutes écoulées depuis minuit dans le fuseau donné. */
-export function localNow(tz: string, now = new Date()) {
-  const parts = Object.fromEntries(
-    new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
-      .formatToParts(now).map(p => [p.type, p.value]),
-  );
-  return { day: `${parts.year}-${parts.month}-${parts.day}`, minutes: Number(parts.hour) * 60 + Number(parts.minute) };
+/* ---- Rappels : état annexe dans Redis ---- */
+/** Endpoints refusés par le service push (404/410) : le client devra se réabonner. */
+export const deadKey = (endpoint: string) => `clair:dead:${idOf(endpoint)}`;
+/** Journal des derniers passages de /api/send (diagnostic, voir /api/status). */
+export const RUNS_KEY = 'clair:runs';
+/** Dernier appel refusé (signature QStash invalide, clés manquantes…). */
+export const AUTH_FAIL_KEY = 'clair:auth-fail';
+
+/** Branche la logique d'envoi (api/_reminder.ts) sur Redis. */
+export const redisStore: ReminderStore = {
+  all: async () => (await redis.hgetall<Record<string, StoredSub>>(SUBS_KEY)) ?? {},
+  get: id => redis.hget<StoredSub>(SUBS_KEY, id),
+  put: async (id, rec) => { await redis.hset(SUBS_KEY, { [id]: rec }); },
+  remove: async id => { await redis.hdel(SUBS_KEY, id); },
+  lock: async (key, ttl) => (await redis.set(key, 1, { nx: true, ex: ttl })) === 'OK',
+  unlock: async key => { await redis.del(key); },
+  markDead: async epKey => { await redis.set(`clair:dead:${epKey}`, 1, { ex: 30 * 86400 }); },
+};
+
+/** Jeton d'administration (déclenchement manuel, /api/status). */
+export function adminAuthorized(req: Request): boolean {
+  const secret = process.env.CRON_SECRET;
+  return !!secret && req.headers.get('authorization') === `Bearer ${secret}`;
 }
