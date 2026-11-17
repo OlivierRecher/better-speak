@@ -64,6 +64,11 @@ if (qtoken) {
   const schedules = (await get('/v2/schedules')).filter(s => /\/api\/send\/?$/.test(s.destination ?? ''));
   console.log(`\n== Planifications QStash vers /api/send : ${schedules.length}${schedules.length > 1 ? '  ← une seule attendue' : ''}`);
   for (const s of schedules) console.log(`  ${s.scheduleId}  ${s.destination}  "${s.cron}"  ${s.isPaused ? 'EN PAUSE' : 'active'}  essais=${s.retries}  créée ${new Date(s.createdAt).toISOString()}`);
+  // quota : chaque planification active « */5 » consomme 288 messages par jour (plus les nouveaux essais)
+  const LIMIT = Number(process.env.QSTASH_DAILY_LIMIT ?? 1000);
+  const perDay = schedules.filter(s => !s.isPaused).reduce((n, s) => n + (s.cron === '*/5 * * * *' ? 288 : 0), 0);
+  console.log(`  consommation prévue : ${perDay} messages/jour pour une limite de ${LIMIT}/jour (QSTASH_DAILY_LIMIT, offre gratuite)`);
+  if (perDay > LIMIT) console.log(`  ← quota épuisé chaque jour vers ${new Date(Date.UTC(2000, 0, 1, 0, Math.floor(LIMIT / perDay * 1440))).toISOString().slice(11, 16)} UTC : plus aucun appel ensuite, donc plus de rappel`);
   try {
     const logs = await get('/v2/logs?count=1000');
     const events = logs.events ?? logs.logs ?? [];
@@ -71,6 +76,9 @@ if (qtoken) {
     const byDayState = new Map();
     for (const e of toSend) { const k = `${new Date(e.time).toISOString().slice(0, 10)} ${e.state}${e.responseStatus ? ` ${e.responseStatus}` : ''}`; byDayState.set(k, (byDayState.get(k) ?? 0) + 1); }
     console.log(`\n== Journal QStash (${toSend.length} évènements récents vers /api/send), par jour et état :`);
+    const delivered = new Map();
+    for (const e of toSend.filter(e => e.state === 'DELIVERED')) { const d = new Date(e.time).toISOString().slice(0, 10); delivered.set(d, (delivered.get(d) ?? 0) + 1); }
+    for (const [d, n] of [...delivered.entries()].sort()) console.log(`  ${d} : ${n} appels livrés${n > 300 ? '  ← plus de 288 : plusieurs planifications' : ''}`);
     for (const [k, n] of [...byDayState.entries()].sort()) console.log(`  ${k} : ${n}`);
     const errs = toSend.filter(e => e.error || (e.responseStatus && e.responseStatus >= 400)).slice(0, 5);
     for (const e of errs) console.log(`  erreur ${new Date(e.time).toISOString()} ${e.state} ${e.responseStatus ?? ''} ${(e.error ?? e.responseBody ?? '').toString().slice(0, 160)}`);

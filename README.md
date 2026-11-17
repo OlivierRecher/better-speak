@@ -105,7 +105,13 @@ curl -H "Authorization: Bearer $CRON_SECRET" https://ton-app.vercel.app/api/stat
 montre chaque abonné (heure, fuseau, dernier envoi, ce que `/api/send` ferait maintenant), les derniers
 passages du planificateur (plusieurs passages dans la même tranche de 5 min = planifications en double)
 et la configuration. En local, `scripts/reminders-diagnose.mjs` lit Redis et QStash en lecture seule
-(`--fix-duplicates` retire les anciens abonnements en double). `npm test` simule plusieurs jours
+(`--fix-duplicates` retire les anciens abonnements en double). Pour remettre la production d'aplomb
+une fois (une seule planification, plus de doublons d'abonnement) :
+```bash
+QSTASH_TOKEN=... UPSTASH_REDIS_REST_URL=... UPSTASH_REDIS_REST_TOKEN=... \
+  ./scripts/reminders-cleanup.sh https://ton-app.vercel.app           # montre ce qui serait fait
+  ./scripts/reminders-cleanup.sh --apply https://ton-app.vercel.app   # le fait
+``` `npm test` simule plusieurs jours
 d'appels à `/api/send`.
 
 Voir `.env.example`. Coût : 0 € sur les offres gratuites de Vercel et Upstash.
