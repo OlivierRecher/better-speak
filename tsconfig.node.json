@@ -9,7 +9,8 @@
     "strict": true,
     "skipLibCheck": true,
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "types": ["node"]
   },
-  "include": ["vite.config.ts", "api", "src/lib/messages.ts"]
+  "include": ["vite.config.ts", "api", "tests", "src/lib/messages.ts"]
 }

@@ -73,12 +73,51 @@ navigateur ne sait pas programmer une notification quand l'app est fermée.
 2. **Upstash Redis** : créer une base (offre gratuite) via Vercel › Storage › Upstash, ou à la
    main avec `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`.
 3. **Upstash QStash** : copier les clés de signature dans `QSTASH_CURRENT_SIGNING_KEY` et
-   `QSTASH_NEXT_SIGNING_KEY`, redéployer, puis créer la planification :
+   `QSTASH_NEXT_SIGNING_KEY`, définir `CRON_SECRET` (une longue chaîne aléatoire, pour le
+   diagnostic), redéployer, puis créer la planification **une seule fois**, vers l'URL de production :
    ```bash
+   QSTASH_TOKEN=... ./scripts/qstash-schedule.sh --list                    # ce qui existe déjà
    QSTASH_TOKEN=... ./scripts/qstash-schedule.sh https://ton-app.vercel.app
    ```
-   QStash appelle `/api/send` toutes les 5 minutes (288 appels/jour, sous la limite gratuite de
-   1 000). Chaque appel est signé ; un appel non signé est refusé.
+   Le script est idempotent : relancé, il ne crée pas de copie (identifiant fixe `clair-send`). S'il
+   trouve des planifications en double, vers une autre URL (preview) ou en pause, il refuse ;
+   `--replace` n'en garde alors qu'une seule. QStash appelle `/api/send` toutes les 5 minutes
+   (288 appels/jour, sous la limite gratuite). Chaque appel est signé ; un appel non signé est refusé.
+   Ne pas ajouter de cron Vercel en plus.
+
+### Comment partent les rappels
+
+- **Un seul rappel par appareil et par jour**, à l'heure locale choisie dans Moi, dans le fuseau de
+  l'appareil. Rien ce jour-là si la journée est déjà pratiquée.
+- Deux verrous Redis (`clair:sent:<appareil>:<jour>` et `clair:sent:e:<endpoint>:<jour>`) rendent
+  l'envoi idempotent : appels simultanés, nouveaux essais QStash, doublons d'abonnement, changement
+  d'heure ou désactivation/réactivation ne renvoient rien le même jour.
+- Si un passage est manqué, le rappel part au passage suivant, jusqu'à 60 min après l'heure choisie
+  (sans franchir minuit). Activer le rappel ou choisir une heure déjà passée ne déclenche rien tout de
+  suite : le premier rappel part le lendemain.
+- Rare : si le service push accepte le message mais que la réponse se perd (délai réseau), un second
+  envoi peut avoir lieu au passage suivant.
+- Abonnement révoqué par le service push (404/410, fréquent sur iPhone) : il est retiré, et l'app en
+  recrée un toute seule à sa prochaine ouverture. Si la permission a été retirée, l'interrupteur
+  repasse sur « off ».
+
+### Diagnostiquer
+
+```bash
+curl -H "Authorization: Bearer $CRON_SECRET" https://ton-app.vercel.app/api/status
+```
+montre chaque abonné (heure, fuseau, dernier envoi, ce que `/api/send` ferait maintenant), les derniers
+passages du planificateur (plusieurs passages dans la même tranche de 5 min = planifications en double)
+et la configuration. En local, `scripts/reminders-diagnose.mjs` lit Redis et QStash en lecture seule
+(`--fix-duplicates` retire les anciens abonnements en double). Pour remettre la production d'aplomb
+une fois (une seule planification, plus de doublons d'abonnement) :
+```bash
+export QSTASH_TOKEN=... UPSTASH_REDIS_REST_URL=... UPSTASH_REDIS_REST_TOKEN=...
+./scripts/reminders-cleanup.sh https://ton-app.vercel.app           # montre ce qui serait fait
+./scripts/reminders-cleanup.sh --apply https://ton-app.vercel.app   # le fait
+```
+
+`npm test` (Node 22.18 ou plus) simule plusieurs jours d'appels à `/api/send`.
 
 Voir `.env.example`. Coût : 0 € sur les offres gratuites de Vercel et Upstash.
 
